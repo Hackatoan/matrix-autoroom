@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 from nio import (
@@ -23,9 +24,10 @@ class Config:
     room_name_prefix: str = "Voice Room"
 
 
-# Track temp rooms: room_id → {"creator": user_id, "space": space_id, "number": int}
+# Track temp rooms: room_id → {"creator": user_id, "space": space_id, "number": int, "empty_since": float|None}
 active_rooms: dict = {}
 room_counters: dict = {}  # generator_alias → next int
+EMPTY_ROOM_TIMEOUT = 3600  # seconds before an empty room is removed
 
 
 async def create_temp_room(client: AsyncClient, creator: str, space_id: str, generator_alias: str, label: str) -> Optional[str]:
@@ -46,7 +48,7 @@ async def create_temp_room(client: AsyncClient, creator: str, space_id: str, gen
         return None
 
     room_id = resp.room_id
-    active_rooms[room_id] = {"creator": creator, "space": space_id, "generator": generator_alias}
+    active_rooms[room_id] = {"creator": creator, "space": space_id, "generator": generator_alias, "empty_since": None}
 
     # Add to parent space
     await client.room_put_state(
@@ -86,18 +88,29 @@ async def remove_temp_room(client: AsyncClient, room_id: str):
 
 
 async def check_empty_rooms(client: AsyncClient):
-    """Periodically check if any temp rooms are empty and remove them."""
+    """Periodically check if any temp rooms have been empty for EMPTY_ROOM_TIMEOUT and remove them."""
     while True:
-        await asyncio.sleep(30)
+        await asyncio.sleep(60)
+        now = time.monotonic()
         for room_id in list(active_rooms.keys()):
             room = client.rooms.get(room_id)
             if not room:
                 continue
-            # Count members excluding the bot itself
             members = [m for m in room.users if m != client.user_id]
+            meta = active_rooms.get(room_id)
+            if not meta:
+                continue
             if not members:
-                log.info("Room %s is empty, removing", room_id)
-                await remove_temp_room(client, room_id)
+                if meta["empty_since"] is None:
+                    meta["empty_since"] = now
+                    log.info("Room %s became empty, will remove in %ds", room_id, EMPTY_ROOM_TIMEOUT)
+                elif now - meta["empty_since"] >= EMPTY_ROOM_TIMEOUT:
+                    log.info("Room %s empty for %ds, removing", room_id, EMPTY_ROOM_TIMEOUT)
+                    await remove_temp_room(client, room_id)
+            else:
+                if meta["empty_since"] is not None:
+                    log.info("Room %s has members again, resetting empty timer", room_id)
+                    meta["empty_since"] = None
 
 
 def make_message_callback(config: Config, client: AsyncClient):
