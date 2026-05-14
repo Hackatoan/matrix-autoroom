@@ -1,0 +1,7 @@
+services:
+  autoroom:
+    build: .
+    container_name: matrix-autoroom
+    restart: unless-stopped
+    volumes:
+      - ./config.json:/app/config.json:ro

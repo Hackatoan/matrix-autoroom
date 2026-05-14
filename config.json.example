@@ -1,0 +1,10 @@
+{
+  "homeserver": "https://matrix.hackatoa.com",
+  "user_id": "@autoroom:matrix.hackatoa.com",
+  "access_token": "syt_your_token_here",
+  "room_name_prefix": "Voice Room",
+  "generators": {
+    "vip-generator": "!SPACE_ROOM_ID_FOR_CLASSIFIED_SECTOR:matrix.hackatoa.com",
+    "crew-generator": "!SPACE_ROOM_ID_FOR_DOCKING_BAY:matrix.hackatoa.com"
+  }
+}
