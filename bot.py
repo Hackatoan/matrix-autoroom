@@ -37,10 +37,8 @@ async def create_temp_room(client: AsyncClient, creator: str, space_id: str, gen
         name=name,
         initial_state=[
             {"type": "m.room.history_visibility", "content": {"history_visibility": "shared"}},
-            # Mark as video room so Element shows the call button prominently
-            {"type": "io.element.functional_members", "content": {}},
+            {"type": "m.room.power_levels", "content": {"users_default": 0, "users": {client.user_id: 100}}},
         ],
-        power_level_content_override={"users_default": 0, "users": {client.user_id: 100}},
     )
 
     if isinstance(resp, RoomCreateError):
