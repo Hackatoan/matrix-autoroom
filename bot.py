@@ -109,7 +109,8 @@ def make_message_callback(config: Config, client: AsyncClient):
 
     async def resolve_generators():
         for alias, space_id in config.generators.items():
-            full_alias = alias if alias.startswith("#") else f"#{alias}:{client.user_id.split(':')[1]}"
+            server_name = config.user_id.split(":")[1]
+            full_alias = alias if alias.startswith("#") else f"#{alias}:{server_name}"
             resp = await client.room_resolve_alias(full_alias)
             if hasattr(resp, "room_id"):
                 generator_rooms[resp.room_id] = (space_id, alias)
@@ -166,6 +167,7 @@ async def main():
         config=AsyncClientConfig(max_limit_exceeded=0, max_timeouts=0),
     )
     client.access_token = config.access_token
+    client.user_id = config.user_id
 
     msg_callback = make_message_callback(config, client)
     client.add_event_callback(msg_callback, RoomMessageText)
