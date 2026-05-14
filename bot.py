@@ -2,6 +2,7 @@ import asyncio
 import logging
 import json
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 from nio import (
@@ -28,6 +29,7 @@ class Config:
 active_rooms: dict = {}
 room_counters: dict = {}  # generator_alias → next int
 EMPTY_ROOM_TIMEOUT = 3600  # seconds before an empty room is removed
+JITSI_BASE_URL = "https://jitsi.hackatoa.com"
 
 
 async def create_temp_room(client: AsyncClient, creator: str, space_id: str, generator_alias: str, label: str) -> Optional[str]:
@@ -58,10 +60,34 @@ async def create_temp_room(client: AsyncClient, creator: str, space_id: str, gen
         state_key=room_id,
     )
 
+    # Add Jitsi voice widget so members can join a persistent voice call
+    jitsi_room_name = room_id.lstrip("!").split(":")[0]
+    jitsi_url = f"{JITSI_BASE_URL}/{jitsi_room_name}"
+    widget_id = f"jitsi_{uuid.uuid4().hex[:8]}"
+    await client.room_put_state(
+        room_id,
+        "im.vector.modular.widgets",
+        {
+            "type": "jitsi",
+            "url": f"{JITSI_BASE_URL}/widgets/jitsi.html?confId={jitsi_room_name}#confId=$conferenceId&domain=$domain&isAudioOnly=$isAudioOnly&displayName=$matrix_display_name&avatarUrl=$matrix_avatar_url&userId=$matrix_user_id&roomId=$matrix_room_id&theme=$theme",
+            "name": "Voice",
+            "data": {
+                "domain": "jitsi.hackatoa.com",
+                "conferenceId": jitsi_room_name,
+                "isAudioOnly": False,
+                "supportsScreensharing": True,
+            },
+            "creatorUserId": client.user_id,
+            "id": widget_id,
+        },
+        state_key=widget_id,
+    )
+
     # Invite creator
     await client.room_invite(room_id, creator)
 
-    log.info("Created temp room %s (%s) for %s", name, room_id, creator)
+    log.info("Created temp room %s (%s) with Jitsi voice for %s", name, room_id, creator)
+    log.info("Jitsi URL: %s", jitsi_url)
     return room_id
 
 
@@ -145,12 +171,18 @@ def make_message_callback(config: Config, client: AsyncClient):
 
         new_room_id = await create_temp_room(client, event.sender, space_id, alias, label)
         if new_room_id:
+            jitsi_room_name = new_room_id.lstrip("!").split(":")[0]
+            jitsi_url = f"{JITSI_BASE_URL}/{jitsi_room_name}"
             await client.room_send(
                 room.room_id,
                 "m.room.message",
                 {
                     "msgtype": "m.notice",
-                    "body": f"Created voice room for {event.sender}. Join: https://element.hackatoa.com/#/room/{new_room_id}",
+                    "body": (
+                        f"Created voice room for {event.sender}.\n"
+                        f"Matrix room: https://element.hackatoa.com/#/room/{new_room_id}\n"
+                        f"Voice: {jitsi_url}"
+                    ),
                 },
             )
 
