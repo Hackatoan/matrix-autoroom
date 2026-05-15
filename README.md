@@ -1,37 +1,33 @@
+[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hackatoa)
+
 # matrix-autoroom
 
-AutoRoom bot for Matrix. Mirrors Discord's AutoRoom functionality — when someone sends a message in a configured generator room, the bot creates a temporary voice room under the same space category, invites the sender, and removes the room when it's empty.
+AutoRoom bot for Matrix. Mirrors Discord's AutoRoom — when someone sends a message in a configured generator room, the bot creates a temporary room under the same space, invites the sender, and removes the room when it's empty.
 
 ## How it works
 
-1. You designate certain rooms as **generators** (e.g. `#vip-generator`, `#crew-generator`)
-2. Someone sends any message in a generator room (or `!room My Room Name` for a custom name)
+1. Designate certain rooms as **generators** (e.g. `#vip-generator`)
+2. Someone sends any message in a generator room — or `!room My Room Name` for a custom name
 3. The bot creates a new room under the generator's parent space and invites them
 4. When the last member leaves, the bot tombstones and removes the room
 
 ## Setup
 
-### 1. Create a bot account on your homeserver
+### 1. Create a bot account
 
 ```bash
-curl -X POST https://matrix.hackatoa.com/_matrix/client/v3/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"autoroom","password":"yourpassword","auth":{"type":"m.login.dummy"}}'
-```
-
-Then log in to get an access token:
-
-```bash
-curl -X POST https://matrix.hackatoa.com/_matrix/client/v3/login \
+curl -X POST https://matrix.yourdomain.com/_matrix/client/v3/login \
   -H "Content-Type: application/json" \
   -d '{"type":"m.login.password","identifier":{"type":"m.id.user","user":"autoroom"},"password":"yourpassword"}'
 ```
 
-### 2. Invite the bot to your generator rooms and parent spaces
+Save the returned `access_token`.
 
-In Element, invite `@autoroom:matrix.hackatoa.com` to:
-- Each generator room (`#vip-generator`, `#crew-generator`)
-- Each parent space (Classified Sector, Docking Bay) — so it can add children
+### 2. Invite the bot
+
+In Element, invite `@autoroom:yourdomain.com` to:
+- Each generator room
+- Each parent space (so it can add children)
 
 ### 3. Configure
 
@@ -39,16 +35,13 @@ In Element, invite `@autoroom:matrix.hackatoa.com` to:
 cp config.json.example config.json
 ```
 
-Edit `config.json`:
-
 ```json
 {
-  "homeserver": "https://matrix.hackatoa.com",
-  "user_id": "@autoroom:matrix.hackatoa.com",
+  "homeserver": "https://matrix.yourdomain.com",
+  "user_id": "@autoroom:yourdomain.com",
   "access_token": "syt_...",
   "generators": {
-    "vip-generator": "!CLASSIFIED_SECTOR_SPACE_ID:matrix.hackatoa.com",
-    "crew-generator": "!DOCKING_BAY_SPACE_ID:matrix.hackatoa.com"
+    "vip-generator": "!SPACE_ROOM_ID:yourdomain.com"
   }
 }
 ```
@@ -68,9 +61,13 @@ pip install -r requirements.txt
 python bot.py
 ```
 
-## Generator room usage
+## Generator room commands
 
 | Message | Result |
-|---------|--------|
+|---|---|
 | Any message | Creates "Voice Room N" |
 | `!room Gaming` | Creates "Gaming" |
+
+---
+
+[hackatoa.com](https://hackatoa.com) · [GitHub](https://github.com/Hackatoan) · [Buy Me A Coffee](https://buymeacoffee.com/hackatoa)
