@@ -1,73 +1,37 @@
-[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hackatoa)
-
 # matrix-autoroom
 
-AutoRoom bot for Matrix. Mirrors Discord's AutoRoom — when someone sends a message in a configured generator room, the bot creates a temporary room under the same space, invites the sender, and removes the room when it's empty.
+A Matrix bot that creates temporary voice rooms on demand and removes them when empty.
 
-## How it works
+☕ **Support:** [Buy Me a Coffee](https://buymeacoffee.com/hackatoa)
 
-1. Designate certain rooms as **generators** (e.g. `#vip-generator`)
-2. Someone sends any message in a generator room — or `!room My Room Name` for a custom name
-3. The bot creates a new room under the generator's parent space and invites them
-4. When the last member leaves, the bot tombstones and removes the room
+## Overview
 
-## Setup
+Keeps a Matrix space tidy by spinning up temporary voice rooms when needed and cleaning them up automatically once everyone leaves.
 
-### 1. Create a bot account
+## Features
 
-```bash
-curl -X POST https://matrix.yourdomain.com/_matrix/client/v3/login \
-  -H "Content-Type: application/json" \
-  -d '{"type":"m.login.password","identifier":{"type":"m.id.user","user":"autoroom"},"password":"yourpassword"}'
-```
+- On-demand temporary voice rooms
+- Auto-removal when a room goes empty
+- Self-hosted
 
-Save the returned `access_token`.
+## Tech Stack
 
-### 2. Invite the bot
+Python · Matrix (matrix-nio)
 
-In Element, invite `@autoroom:yourdomain.com` to:
-- Each generator room
-- Each parent space (so it can add children)
-
-### 3. Configure
-
-```bash
-cp config.json.example config.json
-```
-
-```json
-{
-  "homeserver": "https://matrix.yourdomain.com",
-  "user_id": "@autoroom:yourdomain.com",
-  "access_token": "syt_...",
-  "generators": {
-    "vip-generator": "!SPACE_ROOM_ID:yourdomain.com"
-  }
-}
-```
-
-Get space room IDs in Element: open the space → Settings → Advanced.
-
-### 4. Run
-
-```bash
-docker compose up -d
-```
-
-Or without Docker:
+## Development
 
 ```bash
 pip install -r requirements.txt
-python bot.py
+# configure your homeserver + access token, then run the bot
+python3 bot.py
 ```
 
-## Generator room commands
+## Support
 
-| Message | Result |
-|---|---|
-| Any message | Creates "Voice Room N" |
-| `!room Gaming` | Creates "Gaming" |
+If this project is useful to you, consider supporting development:
+
+☕ **[Buy Me a Coffee](https://buymeacoffee.com/hackatoa)**
 
 ---
 
-[hackatoa.com](https://hackatoa.com) · [GitHub](https://github.com/Hackatoan) · [Buy Me A Coffee](https://buymeacoffee.com/hackatoa)
+Part of the **[Hackatoa](https://hackatoa.com)** ecosystem — self-hosted apps, browser games, and bots. · [All repositories »](https://github.com/Hackatoan)
