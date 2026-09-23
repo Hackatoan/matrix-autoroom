@@ -152,10 +152,17 @@ def make_message_callback(config: Config, client: AsyncClient):
     generator_rooms: dict = {}  # room_id → (space_id, alias)
 
     async def resolve_generators():
-        for alias, space_id in config.generators.items():
-            server_name = config.user_id.split(":")[1]
-            full_alias = alias if alias.startswith("#") else f"#{alias}:{server_name}"
-            resp = await client.room_resolve_alias(full_alias)
+        server_name = config.user_id.split(":")[1]
+        # Each alias resolution is an independent HTTP round-trip — run them
+        # concurrently instead of awaiting one at a time at startup.
+        entries = [
+            (alias, space_id, alias if alias.startswith("#") else f"#{alias}:{server_name}")
+            for alias, space_id in config.generators.items()
+        ]
+        responses = await asyncio.gather(
+            *(client.room_resolve_alias(full_alias) for _, _, full_alias in entries)
+        )
+        for (alias, space_id, full_alias), resp in zip(entries, responses):
             if hasattr(resp, "room_id"):
                 generator_rooms[resp.room_id] = (space_id, alias)
                 log.info("Generator %s → %s (space: %s)", full_alias, resp.room_id, space_id)
