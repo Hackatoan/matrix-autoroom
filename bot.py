@@ -32,10 +32,10 @@ EMPTY_ROOM_TIMEOUT = 3600  # seconds before an empty room is removed
 JITSI_BASE_URL = "https://jitsi.hackatoa.com"
 
 
-async def create_temp_room(client: AsyncClient, creator: str, space_id: str, generator_alias: str, label: str) -> Optional[str]:
+async def create_temp_room(client: AsyncClient, creator: str, space_id: str, generator_alias: str, label: str, name_prefix: str = "Voice Room") -> Optional[str]:
     room_counters[generator_alias] = room_counters.get(generator_alias, 0) + 1
     n = room_counters[generator_alias]
-    name = label or f"Voice Room {n}"
+    name = label or f"{name_prefix} {n}"
 
     resp = await client.room_create(
         name=name,
@@ -117,26 +117,29 @@ async def check_empty_rooms(client: AsyncClient):
     """Periodically check if any temp rooms have been empty for EMPTY_ROOM_TIMEOUT and remove them."""
     while True:
         await asyncio.sleep(60)
-        now = time.monotonic()
-        for room_id in list(active_rooms.keys()):
-            room = client.rooms.get(room_id)
-            if not room:
-                continue
-            members = [m for m in room.users if m != client.user_id]
-            meta = active_rooms.get(room_id)
-            if not meta:
-                continue
-            if not members:
-                if meta["empty_since"] is None:
-                    meta["empty_since"] = now
-                    log.info("Room %s became empty, will remove in %ds", room_id, EMPTY_ROOM_TIMEOUT)
-                elif now - meta["empty_since"] >= EMPTY_ROOM_TIMEOUT:
-                    log.info("Room %s empty for %ds, removing", room_id, EMPTY_ROOM_TIMEOUT)
-                    await remove_temp_room(client, room_id)
-            else:
-                if meta["empty_since"] is not None:
-                    log.info("Room %s has members again, resetting empty timer", room_id)
-                    meta["empty_since"] = None
+        try:
+            now = time.monotonic()
+            for room_id in list(active_rooms.keys()):
+                room = client.rooms.get(room_id)
+                if not room:
+                    continue
+                members = [m for m in room.users if m != client.user_id]
+                meta = active_rooms.get(room_id)
+                if not meta:
+                    continue
+                if not members:
+                    if meta["empty_since"] is None:
+                        meta["empty_since"] = now
+                        log.info("Room %s became empty, will remove in %ds", room_id, EMPTY_ROOM_TIMEOUT)
+                    elif now - meta["empty_since"] >= EMPTY_ROOM_TIMEOUT:
+                        log.info("Room %s empty for %ds, removing", room_id, EMPTY_ROOM_TIMEOUT)
+                        await remove_temp_room(client, room_id)
+                else:
+                    if meta["empty_since"] is not None:
+                        log.info("Room %s has members again, resetting empty timer", room_id)
+                        meta["empty_since"] = None
+        except Exception:
+            log.exception("Error while checking for empty rooms; will retry next cycle")
 
 
 def make_message_callback(config: Config, client: AsyncClient):
@@ -169,7 +172,7 @@ def make_message_callback(config: Config, client: AsyncClient):
         if body.startswith("!room "):
             label = body[6:].strip()
 
-        new_room_id = await create_temp_room(client, event.sender, space_id, alias, label)
+        new_room_id = await create_temp_room(client, event.sender, space_id, alias, label, config.room_name_prefix)
         if new_room_id:
             jitsi_room_name = new_room_id.lstrip("!").split(":")[0]
             jitsi_url = f"{JITSI_BASE_URL}/{jitsi_room_name}"
@@ -226,8 +229,8 @@ async def main():
     # Start background empty-room reaper
     asyncio.create_task(check_empty_rooms(client))
 
-    # Long-poll sync loop
-    await client.sync_forever(timeout=30000, full_state=True)
+    # Long-poll sync loop (full state was already fetched by the initial sync() above)
+    await client.sync_forever(timeout=30000)
 
 
 if __name__ == "__main__":
