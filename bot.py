@@ -53,7 +53,7 @@ async def create_temp_room(client: AsyncClient, creator: str, space_id: str, gen
     active_rooms[room_id] = {"creator": creator, "space": space_id, "generator": generator_alias, "empty_since": None}
 
     # Add to parent space
-    await client.room_put_state(
+    add_to_space = client.room_put_state(
         space_id,
         "m.space.child",
         {"via": [client.user_id.split(":")[1]], "suggested": False},
@@ -64,7 +64,7 @@ async def create_temp_room(client: AsyncClient, creator: str, space_id: str, gen
     jitsi_room_name = room_id.lstrip("!").split(":")[0]
     jitsi_url = f"{JITSI_BASE_URL}/{jitsi_room_name}"
     widget_id = f"jitsi_{uuid.uuid4().hex[:8]}"
-    await client.room_put_state(
+    add_jitsi_widget = client.room_put_state(
         room_id,
         "im.vector.modular.widgets",
         {
@@ -84,7 +84,11 @@ async def create_temp_room(client: AsyncClient, creator: str, space_id: str, gen
     )
 
     # Invite creator
-    await client.room_invite(room_id, creator)
+    invite_creator = client.room_invite(room_id, creator)
+
+    # These three calls are independent of each other (all only need room_id,
+    # already known) — run them concurrently instead of as sequential round-trips.
+    await asyncio.gather(add_to_space, add_jitsi_widget, invite_creator)
 
     log.info("Created temp room %s (%s) with Jitsi voice for %s", name, room_id, creator)
     log.info("Jitsi URL: %s", jitsi_url)
