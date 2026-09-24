@@ -135,15 +135,17 @@ async def check_empty_rooms(client: AsyncClient):
         try:
             now = time.monotonic()
             rooms_to_remove = []
-            for room_id in list(active_rooms.keys()):
+            for room_id, meta in list(active_rooms.items()):
                 room = client.rooms.get(room_id)
                 if not room:
                     continue
-                members = [m for m in room.users if m != client.user_id]
-                meta = active_rooms.get(room_id)
-                if not meta:
-                    continue
-                if not members:
+                # Short-circuit on the first non-bot member instead of building
+                # a full membership list just to test truthiness — room.users
+                # can be large for bigger voice rooms, and only emptiness matters
+                # here. meta already came from the items() iteration above, so
+                # there's no need for a second active_rooms.get(room_id) lookup.
+                has_members = any(m != client.user_id for m in room.users)
+                if not has_members:
                     if meta["empty_since"] is None:
                         meta["empty_since"] = now
                         log.info("Room %s became empty, will remove in %ds", room_id, EMPTY_ROOM_TIMEOUT)
