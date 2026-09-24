@@ -31,6 +31,15 @@ room_counters: dict = {}  # generator_alias → next int
 EMPTY_ROOM_TIMEOUT = 3600  # seconds before an empty room is removed
 JITSI_BASE_URL = "https://jitsi.hackatoa.com"
 
+# Any message in a generator room triggers a room_create + several state
+# writes + an invite. Without a limit, a single member (or a compromised/
+# spammy client) can flood the generator with messages and exhaust the
+# homeserver / space with junk rooms and invites. Guard with a per-sender
+# cooldown and a per-generator cap.
+ROOM_CREATE_COOLDOWN = 10  # seconds a sender must wait between triggering new rooms
+MAX_ACTIVE_ROOMS_PER_GENERATOR = 20  # hard cap on concurrently active rooms per generator
+last_created_at: dict = {}  # sender user_id → monotonic timestamp of last room-create trigger
+
 
 async def create_temp_room(client: AsyncClient, creator: str, space_id: str, generator_alias: str, label: str, name_prefix: str = "Voice Room") -> Optional[str]:
     room_counters[generator_alias] = room_counters.get(generator_alias, 0) + 1
@@ -186,6 +195,31 @@ def make_message_callback(config: Config, client: AsyncClient):
 
         space_id, alias = generator_rooms[room.room_id]
         body = event.body.strip()
+
+        # Rate-limit per sender to stop message spam from triggering unbounded
+        # room creation (resource exhaustion / invite spam).
+        now = time.monotonic()
+        last = last_created_at.get(event.sender)
+        if last is not None and now - last < ROOM_CREATE_COOLDOWN:
+            log.info(
+                "Ignoring room-create trigger from %s in %s: cooldown active (%.1fs left)",
+                event.sender, alias, ROOM_CREATE_COOLDOWN - (now - last),
+            )
+            return
+
+        # Hard cap on concurrently active rooms per generator, independent of
+        # cooldown, so a slow drip of messages can't grow it unbounded either.
+        active_for_generator = sum(
+            1 for meta in active_rooms.values() if meta.get("generator") == alias
+        )
+        if active_for_generator >= MAX_ACTIVE_ROOMS_PER_GENERATOR:
+            log.warning(
+                "Generator %s at capacity (%d active rooms); refusing to create another for %s",
+                alias, MAX_ACTIVE_ROOMS_PER_GENERATOR, event.sender,
+            )
+            return
+
+        last_created_at[event.sender] = now
 
         # Support optional custom name: "!room Gaming" or just any message triggers
         label = ""
