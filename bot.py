@@ -125,6 +125,7 @@ async def check_empty_rooms(client: AsyncClient):
         await asyncio.sleep(60)
         try:
             now = time.monotonic()
+            rooms_to_remove = []
             for room_id in list(active_rooms.keys()):
                 room = client.rooms.get(room_id)
                 if not room:
@@ -139,11 +140,17 @@ async def check_empty_rooms(client: AsyncClient):
                         log.info("Room %s became empty, will remove in %ds", room_id, EMPTY_ROOM_TIMEOUT)
                     elif now - meta["empty_since"] >= EMPTY_ROOM_TIMEOUT:
                         log.info("Room %s empty for %ds, removing", room_id, EMPTY_ROOM_TIMEOUT)
-                        await remove_temp_room(client, room_id)
+                        rooms_to_remove.append(room_id)
                 else:
                     if meta["empty_since"] is not None:
                         log.info("Room %s has members again, resetting empty timer", room_id)
                         meta["empty_since"] = None
+
+            # Each timed-out room's teardown is independent (distinct room_id
+            # and state_key) — run them concurrently instead of one at a time
+            # per sweep.
+            if rooms_to_remove:
+                await asyncio.gather(*(remove_temp_room(client, rid) for rid in rooms_to_remove))
         except Exception:
             log.exception("Error while checking for empty rooms; will retry next cycle")
 
