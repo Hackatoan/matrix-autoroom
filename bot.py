@@ -208,6 +208,22 @@ def make_message_callback(config: Config, client: AsyncClient):
                     ),
                 },
             )
+        else:
+            # Room creation failed silently before this fix — the requester saw
+            # no response at all and had no way to tell a failure from a slow
+            # bot. Give explicit feedback so they know to retry or ask an admin.
+            await client.room_send(
+                room.room_id,
+                "m.room.message",
+                {
+                    "msgtype": "m.notice",
+                    "body": (
+                        f"Sorry {event.sender}, I couldn't create a voice room "
+                        "just now. Please try again in a moment, or ask an admin "
+                        "if this keeps happening."
+                    ),
+                },
+            )
 
     # Attach resolver so it runs at startup
     on_message._resolve = resolve_generators
