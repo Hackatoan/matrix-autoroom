@@ -100,16 +100,18 @@ async def remove_temp_room(client: AsyncClient, room_id: str):
     if not meta:
         return
 
-    # Remove from parent space
-    await client.room_put_state(
-        meta["space"], "m.space.child", {}, state_key=room_id
-    )
-
-    # Tombstone the room pointing back to the generator
-    await client.room_put_state(
-        room_id,
-        "m.room.tombstone",
-        {"body": "This voice room has ended.", "replacement_room": meta["space"]},
+    # Removing from the space and tombstoning the room are independent of
+    # each other (different rooms) — run them concurrently. room_leave must
+    # come after the tombstone, since leaving revokes our power to set state.
+    await asyncio.gather(
+        client.room_put_state(
+            meta["space"], "m.space.child", {}, state_key=room_id
+        ),
+        client.room_put_state(
+            room_id,
+            "m.room.tombstone",
+            {"body": "This voice room has ended.", "replacement_room": meta["space"]},
+        ),
     )
 
     await client.room_leave(room_id)
