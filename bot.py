@@ -292,11 +292,13 @@ async def main():
 
     log.info("Starting AutoRoom bot as %s", config.user_id)
 
-    # Initial sync to get room state
-    await client.sync(timeout=5000)
-
-    # Resolve generator aliases after first sync
-    await msg_callback._resolve()
+    # The initial sync and generator-alias resolution are independent
+    # round-trips — resolution only needs the access token (already set
+    # above), not synced room state — and any RoomMessageText events
+    # dispatched while sync() is still running would see an empty
+    # generator_rooms map regardless of resolve order, so behavior is
+    # unchanged. Run them concurrently instead of back-to-back.
+    await asyncio.gather(client.sync(timeout=5000), msg_callback._resolve())
 
     # Start background empty-room reaper
     asyncio.create_task(check_empty_rooms(client))
