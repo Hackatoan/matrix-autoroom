@@ -39,6 +39,13 @@ JITSI_BASE_URL = "https://jitsi.hackatoa.com"
 ROOM_CREATE_COOLDOWN = 10  # seconds a sender must wait between triggering new rooms
 MAX_ACTIVE_ROOMS_PER_GENERATOR = 20  # hard cap on concurrently active rooms per generator
 last_created_at: dict = {}  # sender user_id → monotonic timestamp of last room-create trigger
+# Senders already told about their active cooldown. Without this, a sender
+# who keeps messaging during the cooldown gets silent rejections that look
+# just like a hung bot — but replying on every rejected message would let
+# the notice itself become the spam vector the cooldown exists to prevent,
+# so we tell them once per cooldown window and clear it on their next
+# successful trigger.
+cooldown_notified: set = set()
 
 
 async def create_temp_room(client: AsyncClient, creator: str, space_id: str, generator_alias: str, label: str, name_prefix: str = "Voice Room") -> Optional[str]:
@@ -203,10 +210,24 @@ def make_message_callback(config: Config, client: AsyncClient):
         now = time.monotonic()
         last = last_created_at.get(event.sender)
         if last is not None and now - last < ROOM_CREATE_COOLDOWN:
+            remaining = ROOM_CREATE_COOLDOWN - (now - last)
             log.info(
                 "Ignoring room-create trigger from %s in %s: cooldown active (%.1fs left)",
-                event.sender, alias, ROOM_CREATE_COOLDOWN - (now - last),
+                event.sender, alias, remaining,
             )
+            if event.sender not in cooldown_notified:
+                cooldown_notified.add(event.sender)
+                await client.room_send(
+                    room.room_id,
+                    "m.room.message",
+                    {
+                        "msgtype": "m.notice",
+                        "body": (
+                            f"{event.sender}, you're creating rooms too fast — "
+                            f"please wait ~{remaining:.0f}s before trying again."
+                        ),
+                    },
+                )
             return
 
         # Hard cap on concurrently active rooms per generator, independent of
@@ -222,6 +243,7 @@ def make_message_callback(config: Config, client: AsyncClient):
             return
 
         last_created_at[event.sender] = now
+        cooldown_notified.discard(event.sender)
 
         # Support optional custom name: "!room Gaming" or just any message triggers
         label = ""
