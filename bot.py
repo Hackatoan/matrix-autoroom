@@ -9,7 +9,7 @@ from nio import (
     AsyncClient, RoomMessageText, MatrixRoom, InviteMemberEvent,
     RoomMemberEvent, AsyncClientConfig
 )
-from nio.responses import JoinError, RoomCreateError
+from nio.responses import JoinError, RoomCreateError, RoomPutStateError, RoomInviteError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("autoroom")
@@ -97,7 +97,22 @@ async def create_temp_room(client: AsyncClient, creator: str, space_id: str, gen
 
     # These three calls are independent of each other (all only need room_id,
     # already known) — run them concurrently instead of as sequential round-trips.
-    await asyncio.gather(add_to_space, add_jitsi_widget, invite_creator)
+    space_resp, jitsi_resp, invite_resp = await asyncio.gather(
+        add_to_space, add_jitsi_widget, invite_creator
+    )
+
+    # Each of these can fail independently (permission errors, homeserver
+    # hiccups, etc.) without raising — nio returns an *Error response object
+    # instead of throwing. Previously the results were discarded, so a failed
+    # invite meant the creator silently never got into their own room (while
+    # the caller still reports success), and a failed space/widget write left
+    # the room orphaned or voice-less with nothing in the logs to explain why.
+    if isinstance(space_resp, RoomPutStateError):
+        log.warning("Failed to add temp room %s to space %s: %s", room_id, space_id, space_resp)
+    if isinstance(jitsi_resp, RoomPutStateError):
+        log.warning("Failed to add Jitsi widget to temp room %s: %s", room_id, jitsi_resp)
+    if isinstance(invite_resp, RoomInviteError):
+        log.error("Failed to invite creator %s to temp room %s: %s", creator, room_id, invite_resp)
 
     log.info("Created temp room %s (%s) with Jitsi voice for %s", name, room_id, creator)
     log.info("Jitsi URL: %s", jitsi_url)
