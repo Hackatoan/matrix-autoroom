@@ -28,6 +28,7 @@ class Config:
 # Track temp rooms: room_id → {"creator": user_id, "space": space_id, "number": int, "empty_since": float|None}
 active_rooms: dict = {}
 room_counters: dict = {}  # generator_alias → next int
+rooms_per_generator: dict = {}  # generator_alias → count of active rooms
 EMPTY_ROOM_TIMEOUT = 3600  # seconds before an empty room is removed
 JITSI_BASE_URL = "https://jitsi.hackatoa.com"
 
@@ -67,6 +68,7 @@ async def create_temp_room(client: AsyncClient, creator: str, space_id: str, gen
 
     room_id = resp.room_id
     active_rooms[room_id] = {"creator": creator, "space": space_id, "generator": generator_alias, "empty_since": None}
+    rooms_per_generator[generator_alias] = rooms_per_generator.get(generator_alias, 0) + 1
 
     # Add to parent space
     add_to_space = client.room_put_state(
@@ -146,6 +148,9 @@ async def remove_temp_room(client: AsyncClient, room_id: str):
     )
 
     await client.room_leave(room_id)
+    generator_alias = meta.get("generator")
+    if generator_alias:
+        rooms_per_generator[generator_alias] = rooms_per_generator.get(generator_alias, 1) - 1
     del active_rooms[room_id]
     log.info("Removed temp room %s", room_id)
 
@@ -247,9 +252,7 @@ def make_message_callback(config: Config, client: AsyncClient):
 
         # Hard cap on concurrently active rooms per generator, independent of
         # cooldown, so a slow drip of messages can't grow it unbounded either.
-        active_for_generator = sum(
-            1 for meta in active_rooms.values() if meta.get("generator") == alias
-        )
+        active_for_generator = rooms_per_generator.get(alias, 0)
         if active_for_generator >= MAX_ACTIVE_ROOMS_PER_GENERATOR:
             log.warning(
                 "Generator %s at capacity (%d active rooms); refusing to create another for %s",
