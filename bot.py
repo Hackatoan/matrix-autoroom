@@ -48,6 +48,30 @@ last_created_at: dict = {}  # sender user_id → monotonic timestamp of last roo
 # successful trigger.
 cooldown_notified: set = set()
 
+# Optional config.json keys that override the module-level tunables above.
+# Absent keys keep the built-in defaults, so existing configs behave exactly
+# as before.
+TUNABLE_KEYS = {
+    "empty_room_timeout": "EMPTY_ROOM_TIMEOUT",
+    "room_create_cooldown": "ROOM_CREATE_COOLDOWN",
+    "max_rooms_per_generator": "MAX_ACTIVE_ROOMS_PER_GENERATOR",
+}
+
+
+def apply_tunables(raw: dict) -> None:
+    """Override timeout/limit globals from config, ignoring invalid values."""
+    for key, name in TUNABLE_KEYS.items():
+        if key not in raw:
+            continue
+        value = raw[key]
+        # bool is a subclass of int — reject it explicitly.
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            log.warning("Ignoring invalid %s=%r (must be a positive integer); using default %d",
+                        key, value, globals()[name])
+            continue
+        globals()[name] = value
+        log.info("Config override: %s=%d", key, value)
+
 
 async def create_temp_room(client: AsyncClient, creator: str, space_id: str, generator_alias: str, label: str, name_prefix: str = "Voice Room") -> Optional[str]:
     room_counters[generator_alias] = room_counters.get(generator_alias, 0) + 1
@@ -318,6 +342,7 @@ async def main():
         generators=raw.get("generators", {}),
         room_name_prefix=raw.get("room_name_prefix", "Voice Room"),
     )
+    apply_tunables(raw)
 
     client = AsyncClient(
         config.homeserver,
